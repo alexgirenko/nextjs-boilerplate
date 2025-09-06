@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import chromium from '@sparticuz/chromium-min';
 import puppeteerCore from "puppeteer-core";
 // Ensure Node.js runtime on Vercel and allow longer execution time
 export const runtime = 'nodejs';
@@ -7,13 +6,8 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // seconds
 
 async function getBrowser() {
-  const REMOTE_PATH = process.env.CHROMIUM_REMOTE_EXEC_PATH;
-  const LOCAL_PATH = process.env.CHROMIUM_LOCAL_EXEC_PATH;
-  if (!REMOTE_PATH && !LOCAL_PATH) {
-    throw new Error("Missing a path for chromium executable");
-  }
-
-  if (!!REMOTE_PATH) {
+    const chromium = (await import("@sparticuz/chromium-min")).default;
+    
     return await puppeteerCore.launch({
       headless: true,
       args: [
@@ -34,26 +28,9 @@ async function getBrowser() {
         "--disable-ipc-flooding-protection",
         "--single-process",
       ],
-      executablePath: await chromium.executablePath(
-        process.env.CHROMIUM_REMOTE_EXEC_PATH,
-      ),
+      executablePath: await chromium.executablePath(),
     });
   }
-
-  return await puppeteerCore.launch({
-    executablePath: LOCAL_PATH,
-    headless: true,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-accelerated-2d-canvas",
-      "--no-first-run",
-      "--no-zygote",
-      "--disable-gpu",
-    ],
-  });
-}
 
 // ============================================
 // CONFIGURATION
@@ -93,7 +70,6 @@ async function runAutomation(formData: any) {
     const isVercel = !!process.env.VERCEL_ENV;
 
     if (isVercel) {
-      console.log("Running on Vercel, using getBrowser function...");
       browser = await getBrowser();
     } else {
       console.log("Running locally, using regular puppeteer...");
