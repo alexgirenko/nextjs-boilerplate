@@ -9,33 +9,33 @@ async function getBrowser() {
   const isVercel = !!process.env.VERCEL_ENV;
 
   if (isVercel) {
-    console.log("Running on Vercel, using @sparticuz/chromium...");
+    console.log("Running on Vercel, using @sparticuz/chromium-min...");
     
     try {
-      const chromium = (await import("@sparticuz/chromium")).default;
+      const chromium = (await import("@sparticuz/chromium-min")).default;
       const puppeteerCore = await import("puppeteer-core");
 
       // Set environment variables for chromium
       process.env.FONTCONFIG_PATH = "/tmp";
       process.env.HOME = "/tmp";
 
-      console.log("Launching @sparticuz/chromium browser...");
+      console.log("Launching @sparticuz/chromium-min browser...");
       
-      // Try to get executable path first to check if binaries are available
+      // Get executable path with better error handling
       let executablePath: string;
       try {
         executablePath = await chromium.executablePath();
         console.log("✅ Found chromium executable at:", executablePath);
+        
+        // Verify the file exists
+        const fs = await import("fs");
+        if (!fs.existsSync(executablePath)) {
+          throw new Error(`Executable path does not exist: ${executablePath}`);
+        }
+        
       } catch (pathError: any) {
         console.log("❌ Failed to get executable path:", pathError.message);
-        
-        // Try alternative approach with manual binary path
-        try {
-          executablePath = "/tmp/chromium";
-          console.log("✅ Using fallback path:", executablePath);
-        } catch (altError: any) {
-          throw new Error(`CHROMIUM_PATH_ERROR: ${pathError.message} | Alternative failed: ${altError.message}`);
-        }
+        throw new Error(`CHROMIUM_PATH_ERROR: ${pathError.message}`);
       }
       
       const browser = await puppeteerCore.launch({
@@ -47,17 +47,23 @@ async function getBrowser() {
           "--disable-dev-shm-usage",
           "--no-sandbox",
           "--disable-setuid-sandbox",
+          "--disable-extensions",
+          "--no-first-run",
+          "--no-zygote",
+          "--single-process",
+          "--disable-default-apps",
         ],
         executablePath: executablePath,
         headless: true,
         defaultViewport: { width: 1366, height: 768 },
+        timeout: 30000,
       });
 
-      console.log("✅ Successfully launched @sparticuz/chromium browser");
+      console.log("✅ Successfully launched @sparticuz/chromium-min browser");
       return browser;
       
     } catch (error: any) {
-      throw new Error(`SPARTICUZ_CHROMIUM_FAILED: ${error.message}`);
+      throw new Error(`SPARTICUZ_CHROMIUM_MIN_FAILED: ${error.message}`);
     }
   } else {
     console.log("Running locally, using full puppeteer...");
