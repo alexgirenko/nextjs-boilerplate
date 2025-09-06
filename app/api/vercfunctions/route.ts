@@ -9,103 +9,43 @@ async function getBrowser() {
   const isVercel = !!process.env.VERCEL_ENV;
   
   if (isVercel) {
-    console.log("Running on Vercel, debugging file system...");
-    const chromium = (await import("@sparticuz/chromium-min")).default;
+    console.log("Running on Vercel, using @sparticuz/chromium...");
+    const chromium = (await import("@sparticuz/chromium")).default;
     
     // Set the FONTCONFIG_PATH to avoid font config errors
     process.env.FONTCONFIG_PATH = "/tmp";
     
-    // Debug: Let's explore the file system structure
-    const fs = await import('fs');
-    const path = await import('path');
-    
-    const debugInfo: any = {
-      environment: "Vercel",
-      timestamp: new Date().toISOString(),
-      cwd: process.cwd(),
-      pathChecks: [],
-      chromiumExecutablePath: null,
-      chromiumExecutableExists: false,
-      chromiumParentDir: null,
-      chromiumParentFiles: [],
-      cwdFiles: [],
-      errors: []
-    };
-    
-    // Check various possible locations
-    const possiblePaths = [
-      "/var/task/node_modules/@sparticuz/chromium-min",
-      "/var/task/node_modules/@sparticuz/chromium-min/bin",
-      "/opt/nodejs/node_modules/@sparticuz/chromium-min",
-      "/opt/nodejs/node_modules/@sparticuz/chromium-min/bin",
-      "./node_modules/@sparticuz/chromium-min",
-      "./node_modules/@sparticuz/chromium-min/bin",
-      process.cwd() + "/node_modules/@sparticuz/chromium-min",
-    ];
-    
-    for (const checkPath of possiblePaths) {
-      try {
-        if (fs.existsSync(checkPath)) {
-          const files = fs.readdirSync(checkPath);
-          debugInfo.pathChecks.push({
-            path: checkPath,
-            exists: true,
-            files: files.slice(0, 20) // Limit to first 20 files
-          });
-        } else {
-          debugInfo.pathChecks.push({
-            path: checkPath,
-            exists: false,
-            files: []
-          });
-        }
-      } catch (e: any) {
-        debugInfo.pathChecks.push({
-          path: checkPath,
-          exists: false,
-          error: e?.message || 'Unknown error'
-        });
-      }
-    }
-    
-    // Check what chromium.executablePath() returns
-    try {
-      const chromiumPath = await chromium.executablePath();
-      debugInfo.chromiumExecutablePath = chromiumPath;
-      
-      if (fs.existsSync(chromiumPath)) {
-        debugInfo.chromiumExecutableExists = true;
-      } else {
-        debugInfo.chromiumExecutableExists = false;
-        
-        // Check parent directory
-        const parentDir = path.dirname(chromiumPath);
-        debugInfo.chromiumParentDir = parentDir;
-        if (fs.existsSync(parentDir)) {
-          debugInfo.chromiumParentFiles = fs.readdirSync(parentDir);
-        }
-      }
-    } catch (e: any) {
-      debugInfo.errors.push({
-        operation: "chromium.executablePath()",
-        error: e?.message || 'Unknown error'
-      });
-    }
-    
-    // Check current working directory
-    try {
-      const cwdFiles = fs.readdirSync(process.cwd());
-      debugInfo.cwdFiles = cwdFiles.slice(0, 20); // Limit to first 20 files
-    } catch (e: any) {
-      debugInfo.errors.push({
-        operation: "reading CWD",
-        error: e?.message || 'Unknown error'
-      });
-    }
-    
-    // Instead of trying to launch browser, return debug info as error
-    throw new Error(`VERCEL_DEBUG_INFO: ${JSON.stringify(debugInfo, null, 2)}`);
-    
+    return await puppeteerCore.launch({
+      headless: true,
+      args: [
+        ...chromium.args,
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-accelerated-2d-canvas",
+        "--no-first-run",
+        "--no-zygote",
+        "--disable-gpu",
+        "--disable-web-security",
+        "--disable-features=VizDisplayCompositor",
+        "--disable-background-timer-throttling",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding",
+        "--disable-extension",
+        "--disable-ipc-flooding-protection",
+        "--single-process",
+        "--disable-crash-reporter",
+        "--disable-component-extensions-with-background-pages",
+        "--disable-default-apps",
+        "--mute-audio",
+        "--no-default-browser-check",
+        "--no-pings",
+        "--disable-hang-monitor",
+        "--disable-prompt-on-repost",
+        "--disable-sync",
+      ],
+      executablePath: await chromium.executablePath(),
+    });
   } else {
     console.log("Running locally, using full puppeteer...");
     const puppeteer = await import("puppeteer");
