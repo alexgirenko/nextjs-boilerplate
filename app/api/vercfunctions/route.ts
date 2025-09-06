@@ -9,11 +9,20 @@ async function getBrowser() {
   const isVercel = !!process.env.VERCEL_ENV;
   
   if (isVercel) {
-    console.log("Running on Vercel, using @sparticuz/chromium...");
+    console.log("Running on Vercel, using @sparticuz/chromium (regular package)...");
     const chromium = (await import("@sparticuz/chromium")).default;
     
     // Set the FONTCONFIG_PATH to avoid font config errors
     process.env.FONTCONFIG_PATH = "/tmp";
+    
+    // Debug: Check what chromium.executablePath() returns
+    try {
+      const execPath = await chromium.executablePath();
+      console.log("✅ chromium.executablePath() succeeded:", execPath);
+    } catch (e: any) {
+      console.log("❌ chromium.executablePath() failed:", e?.message);
+      throw new Error(`Chromium setup failed: ${e?.message}`);
+    }
     
     return await puppeteerCore.launch({
       headless: true,
