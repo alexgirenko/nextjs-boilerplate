@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
 
   // Force-include Chromium's bin assets in the serverless function bundle
   // so the brotli files exist at runtime on Vercel
+  
   outputFileTracingIncludes: {
     "/app/api/vercfunctions/route": [
       "./node_modules/@sparticuz/chromium/bin/**",
