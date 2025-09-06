@@ -9,26 +9,31 @@ async function getBrowser() {
   const isVercel = !!process.env.VERCEL_ENV;
 
   if (isVercel) {
-    console.log("Running on Vercel, using chrome-aws-lambda...");
+    console.log("Running on Vercel, using @sparticuz/chromium...");
     
     try {
-      const chromium = await import("chrome-aws-lambda");
+      const chromium = (await import("@sparticuz/chromium")).default;
       const puppeteerCore = await import("puppeteer-core");
 
-      console.log("Launching chrome-aws-lambda browser...");
+      console.log("Launching @sparticuz/chromium browser...");
       
       const browser = await puppeteerCore.launch({
-        args: chromium.default.args,
-        defaultViewport: chromium.default.defaultViewport,
-        executablePath: await chromium.default.executablePath,
-        headless: chromium.default.headless,
+        args: [
+          ...chromium.args,
+          "--hide-scrollbars",
+          "--disable-web-security",
+          "--disable-features=VizDisplayCompositor",
+        ],
+        executablePath: await chromium.executablePath(),
+        headless: true,
+        defaultViewport: { width: 1366, height: 768 },
       });
 
-      console.log("✅ Successfully launched chrome-aws-lambda browser");
+      console.log("✅ Successfully launched @sparticuz/chromium browser");
       return browser;
       
     } catch (error: any) {
-      throw new Error(`CHROME_AWS_LAMBDA_FAILED: ${error.message}`);
+      throw new Error(`SPARTICUZ_CHROMIUM_FAILED: ${error.message}`);
     }
   } else {
     console.log("Running locally, using full puppeteer...");
