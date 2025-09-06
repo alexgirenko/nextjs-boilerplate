@@ -44,7 +44,7 @@ async function getBrowser() {
         "--disable-prompt-on-repost",
         "--disable-sync",
       ],
-      executablePath: await chromium.executablePath(),
+      executablePath: "/var/task/node_modules/@sparticuz/chromium-min/bin/chromium",
     });
   } else {
     console.log("Running locally, using full puppeteer...");
