@@ -57,27 +57,82 @@ async function getBrowser() {
       executablePath = await chromium.executablePath();
       console.log("✅ Using chromium.executablePath():", executablePath);
     } catch (error) {
-      // Fallback: try to find chromium in common locations
-      console.log("❌ chromium.executablePath() failed, trying fallback...");
-      const possiblePaths = [
-        "/usr/bin/chromium-browser",
-        "/usr/bin/chromium",
-        "/usr/bin/google-chrome",
-        "/opt/google/chrome/chrome",
-        "/snap/bin/chromium",
-      ];
-
+      // Comprehensive fallback: explore what's actually available
+      console.log("❌ chromium.executablePath() failed, exploring system...");
+      
       const fs = await import("fs");
-      executablePath =
-        possiblePaths.find((path) => {
-          try {
-            return fs.existsSync(path);
-          } catch {
-            return false;
+      const { execSync } = await import("child_process");
+      
+      // First, try to find chromium using 'which' command
+      let whichResult = null;
+      try {
+        whichResult = execSync("which chromium-browser || which chromium || which google-chrome || which chrome", { encoding: "utf8" }).trim();
+        console.log("🔍 'which' command found:", whichResult);
+      } catch (e) {
+        console.log("❌ 'which' command failed");
+      }
+      
+      // Explore common directories to see what's available
+      const searchDirs = ["/usr/bin", "/usr/local/bin", "/opt", "/bin"];
+      const foundExecutables: string[] = [];
+      
+      for (const dir of searchDirs) {
+        try {
+          if (fs.existsSync(dir)) {
+            const files = fs.readdirSync(dir);
+            const chromiumFiles = files.filter(file => 
+              file.includes("chrom") || file.includes("google") || file.includes("browser")
+            );
+            if (chromiumFiles.length > 0) {
+              console.log(`🔍 Found in ${dir}:`, chromiumFiles.slice(0, 5));
+              chromiumFiles.forEach(file => {
+                const fullPath = `${dir}/${file}`;
+                if (fs.statSync(fullPath).isFile()) {
+                  foundExecutables.push(fullPath);
+                }
+              });
+            }
           }
-        }) || "/usr/bin/chromium-browser"; // Default fallback
-
-      console.log("Using fallback executable path:", executablePath);
+        } catch (e) {
+          // Ignore errors in directory exploration
+        }
+      }
+      
+      // Prioritize executable selection
+      if (whichResult && fs.existsSync(whichResult)) {
+        executablePath = whichResult;
+        console.log("✅ Using 'which' result:", executablePath);
+      } else if (foundExecutables.length > 0) {
+        // Prefer google-chrome, then chromium variants
+        executablePath = foundExecutables.find(path => path.includes("google-chrome")) ||
+                        foundExecutables.find(path => path.includes("chromium")) ||
+                        foundExecutables[0];
+        console.log("✅ Using found executable:", executablePath);
+      } else {
+        // Last resort: return debugging info instead of trying to launch
+        const debugInfo = {
+          error: "No chromium executable found",
+          searchedDirs: searchDirs,
+          foundExecutables: foundExecutables,
+          whichResult: whichResult,
+          availableInUsrBin: fs.existsSync("/usr/bin") ? fs.readdirSync("/usr/bin").filter(f => f.includes("chrom")).slice(0, 10) : [],
+          systemInfo: {
+            platform: process.platform,
+            arch: process.arch,
+            nodeVersion: process.version,
+            isVercel: process.env.VERCEL,
+            functionRegion: process.env.VERCEL_REGION,
+            chromiumVersion: "unknown",
+          },
+          // Try to list more directories for debugging
+          directoryContents: {
+            "/": fs.existsSync("/") ? fs.readdirSync("/").slice(0, 20) : [],
+            "/usr": fs.existsSync("/usr") ? fs.readdirSync("/usr").slice(0, 20) : [],
+            "/opt": fs.existsSync("/opt") ? fs.readdirSync("/opt").slice(0, 20) : [],
+          }
+        };
+        throw new Error(`CHROMIUM_NOT_FOUND: ${JSON.stringify(debugInfo, null, 2)}`);
+      }
     }
 
     return await puppeteerCore.launch({
