@@ -38,6 +38,7 @@ export default function Home() {
       setError("Network error");
     } finally {
       setLoading(false);
+      
     }
   };
 
