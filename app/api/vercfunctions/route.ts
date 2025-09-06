@@ -3,7 +3,7 @@ import puppeteerCore from "puppeteer-core";
 // Ensure Node.js runtime on Vercel and allow longer execution time
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60; // seconds
+export const maxDuration = 70; // seconds
 
 async function getBrowser() {
   const isVercel = !!process.env.VERCEL_ENV;
