@@ -19,7 +19,18 @@ async function getBrowser() {
     const fs = await import('fs');
     const path = await import('path');
     
-    console.log("=== DEBUGGING VERCEL FILE SYSTEM ===");
+    const debugInfo: any = {
+      environment: "Vercel",
+      timestamp: new Date().toISOString(),
+      cwd: process.cwd(),
+      pathChecks: [],
+      chromiumExecutablePath: null,
+      chromiumExecutableExists: false,
+      chromiumParentDir: null,
+      chromiumParentFiles: [],
+      cwdFiles: [],
+      errors: []
+    };
     
     // Check various possible locations
     const possiblePaths = [
@@ -35,83 +46,66 @@ async function getBrowser() {
     for (const checkPath of possiblePaths) {
       try {
         if (fs.existsSync(checkPath)) {
-          console.log(`✅ EXISTS: ${checkPath}`);
           const files = fs.readdirSync(checkPath);
-          console.log(`   Files: ${files.slice(0, 10).join(', ')}${files.length > 10 ? '...' : ''}`);
+          debugInfo.pathChecks.push({
+            path: checkPath,
+            exists: true,
+            files: files.slice(0, 20) // Limit to first 20 files
+          });
         } else {
-          console.log(`❌ NOT FOUND: ${checkPath}`);
+          debugInfo.pathChecks.push({
+            path: checkPath,
+            exists: false,
+            files: []
+          });
         }
-      } catch (e) {
-        console.log(`❌ ERROR checking ${checkPath}:`, e);
+      } catch (e: any) {
+        debugInfo.pathChecks.push({
+          path: checkPath,
+          exists: false,
+          error: e?.message || 'Unknown error'
+        });
       }
     }
     
     // Check what chromium.executablePath() returns
     try {
       const chromiumPath = await chromium.executablePath();
-      console.log(`🔍 chromium.executablePath() returns: ${chromiumPath}`);
+      debugInfo.chromiumExecutablePath = chromiumPath;
       
       if (fs.existsSync(chromiumPath)) {
-        console.log(`✅ chromium.executablePath() file EXISTS`);
+        debugInfo.chromiumExecutableExists = true;
       } else {
-        console.log(`❌ chromium.executablePath() file NOT FOUND`);
+        debugInfo.chromiumExecutableExists = false;
         
         // Check parent directory
         const parentDir = path.dirname(chromiumPath);
-        console.log(`🔍 Checking parent directory: ${parentDir}`);
+        debugInfo.chromiumParentDir = parentDir;
         if (fs.existsSync(parentDir)) {
-          const parentFiles = fs.readdirSync(parentDir);
-          console.log(`   Parent dir files: ${parentFiles.join(', ')}`);
+          debugInfo.chromiumParentFiles = fs.readdirSync(parentDir);
         }
       }
-    } catch (e) {
-      console.log(`❌ ERROR getting chromium.executablePath():`, e);
+    } catch (e: any) {
+      debugInfo.errors.push({
+        operation: "chromium.executablePath()",
+        error: e?.message || 'Unknown error'
+      });
     }
     
     // Check current working directory
-    console.log(`🔍 Current working directory: ${process.cwd()}`);
     try {
       const cwdFiles = fs.readdirSync(process.cwd());
-      console.log(`   CWD files: ${cwdFiles.slice(0, 10).join(', ')}${cwdFiles.length > 10 ? '...' : ''}`);
-    } catch (e) {
-      console.log(`❌ ERROR reading CWD:`, e);
+      debugInfo.cwdFiles = cwdFiles.slice(0, 20); // Limit to first 20 files
+    } catch (e: any) {
+      debugInfo.errors.push({
+        operation: "reading CWD",
+        error: e?.message || 'Unknown error'
+      });
     }
     
-    console.log("=== END DEBUGGING ===");
+    // Instead of trying to launch browser, return debug info as error
+    throw new Error(`VERCEL_DEBUG_INFO: ${JSON.stringify(debugInfo, null, 2)}`);
     
-    // For now, let's try to use the default chromium.executablePath() 
-    // and see what the actual error is
-    return await puppeteerCore.launch({
-      headless: true,
-      args: [
-        ...chromium.args,
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-accelerated-2d-canvas",
-        "--no-first-run",
-        "--no-zygote",
-        "--disable-gpu",
-        "--disable-web-security",
-        "--disable-features=VizDisplayCompositor",
-        "--disable-background-timer-throttling",
-        "--disable-backgrounding-occluded-windows",
-        "--disable-renderer-backgrounding",
-        "--disable-extension",
-        "--disable-ipc-flooding-protection",
-        "--single-process",
-        "--disable-crash-reporter",
-        "--disable-component-extensions-with-background-pages",
-        "--disable-default-apps",
-        "--mute-audio",
-        "--no-default-browser-check",
-        "--no-pings",
-        "--disable-hang-monitor",
-        "--disable-prompt-on-repost",
-        "--disable-sync",
-      ],
-      executablePath: await chromium.executablePath(),
-    });
   } else {
     console.log("Running locally, using full puppeteer...");
     const puppeteer = await import("puppeteer");
