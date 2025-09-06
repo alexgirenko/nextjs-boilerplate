@@ -6,7 +6,14 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // seconds
 
 async function getBrowser() {
+  const isVercel = !!process.env.VERCEL_ENV;
+  
+  if (isVercel) {
+    console.log("Running on Vercel, using chromium-min...");
     const chromium = (await import("@sparticuz/chromium-min")).default;
+    
+    // Set the FONTCONFIG_PATH to avoid font config errors
+    process.env.FONTCONFIG_PATH = "/tmp";
     
     return await puppeteerCore.launch({
       headless: true,
@@ -27,10 +34,35 @@ async function getBrowser() {
         "--disable-extension",
         "--disable-ipc-flooding-protection",
         "--single-process",
+        "--disable-crash-reporter",
+        "--disable-component-extensions-with-background-pages",
+        "--disable-default-apps",
+        "--mute-audio",
+        "--no-default-browser-check",
+        "--no-pings",
+        "--disable-hang-monitor",
+        "--disable-prompt-on-repost",
+        "--disable-sync",
       ],
       executablePath: await chromium.executablePath(),
     });
+  } else {
+    console.log("Running locally, using full puppeteer...");
+    const puppeteer = await import("puppeteer");
+    return await puppeteer.launch({
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-accelerated-2d-canvas",
+        "--no-first-run",
+        "--no-zygote",
+        "--disable-gpu",
+      ],
+    });
   }
+}
 
 // ============================================
 // CONFIGURATION
@@ -66,28 +98,7 @@ async function runAutomation(formData: any) {
     // BROWSER INITIALIZATION (Vercel-compatible)
     // ========================================
     console.log("Launching browser...");
-
-    const isVercel = !!process.env.VERCEL_ENV;
-
-    if (isVercel) {
-      browser = await getBrowser();
-    } else {
-      console.log("Running locally, using regular puppeteer...");
-      const puppeteer = await import("puppeteer");
-      const launchOptions = {
-        headless: true,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-accelerated-2d-canvas",
-          "--no-first-run",
-          "--no-zygote",
-          "--disable-gpu",
-        ],
-      };
-      browser = await puppeteer.launch(launchOptions);
-    }
+    browser = await getBrowser();
     console.log("Opening new page...");
     const page = await browser.newPage();
 
