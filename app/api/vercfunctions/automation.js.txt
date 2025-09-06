@@ -1,8 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
+const puppeteer = require("puppeteer-core");
 
 // ============================================
 // CONFIGURATION
 // ============================================
+// It was decided to go without proxy for now.
+// If needed, uncomment and configure the PROXY_CONFIG object below.
+// const PROXY_CONFIG = {
+//   host: "72.1.155.151",
+//   port: "7542",
+//   username: "qkrrhkdtjd123",
+//   password: "qkrrhkdtjd123",
+// };
+
 const SITE_URL = "https://app.incomeconductor.com";
 
 // ============================================
@@ -13,16 +22,29 @@ const SITE_URL = "https://app.incomeconductor.com";
  * Wait for a specified amount of time
  * @param {number} ms - Milliseconds to wait
  */
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Emits progress updates via socket and console
+ * @param {Object} io - Socket.IO instance
+ * @param {string} step - Current step identifier
+ * @param {string} message - Progress message
+ * @param {string} status - Step status: 'progress', 'success', 'failed', 'completed'
+ * @param {Object} details - Additional data to include
+ */
+// ============================================
+// MAIN AUTOMATION FUNCTION
+// ============================================
 
 /**
  * Main automation function that handles the complete Income Conductor workflow
  * @param {Object} formData - Form data from the frontend
+ * @param {Object} io - Socket.IO instance for progress updates
  * @returns {Object} Automation result with extracted data
  */
-async function runAutomation(formData: any) {
-  let browser: any;
-  let monthlyIncomeGross = null;
+async function runAutomation(formData) {
+  let browser;
+  let monthlyIncomeGross = null; // <-- Declare at top
   let extractedValues = {
     monthlyIncomeGross: null,
     plans: [],
@@ -31,60 +53,48 @@ async function runAutomation(formData: any) {
 
   try {
     // ========================================
-    // BROWSER INITIALIZATION (Vercel-compatible)
+    // BROWSER INITIALIZATION
     // ========================================
     console.log("Launching browser...");
 
-    const isVercel = !!process.env.VERCEL_ENV;
-    let puppeteer: any, launchOptions: any = {
-      headless: true,
-    };
+    // Launch browser with visible window and proxy
+    browser = await puppeteer.launch({
+      executablePath:
+        "c:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", // Use system Chrome
+      headless: true, // Set to true for production and false to monitor the process during testing and debugging
+      slowMo: 20, // Slow down actions for visibility
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-accelerated-2d-canvas",
+        "--no-first-run",
+        "--no-zygote",
+        "--disable-gpu",
+      ],
+    });
+    // uncomment if proxy is needed
+    // `--proxy-server=${PROXY_CONFIG.host}:${PROXY_CONFIG.port}`,
 
-    if (isVercel) {
-      const chromium = (await import("@sparticuz/chromium")).default;
-      puppeteer = await import("puppeteer-core");
-      launchOptions = {
-        ...launchOptions,
-        args: [
-          ...chromium.args,
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-accelerated-2d-canvas",
-          "--no-first-run",
-          "--no-zygote",
-          "--disable-gpu",
-        ],
-        executablePath: await chromium.executablePath(),
-      };
-    } else {
-      puppeteer = await import("puppeteer");
-      launchOptions = {
-        ...launchOptions,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-accelerated-2d-canvas",
-          "--no-first-run",
-          "--no-zygote",
-          "--disable-gpu",
-        ],
-      };
-    }
-
-    browser = await puppeteer.launch(launchOptions);
     console.log("Opening new page...");
     const page = await browser.newPage();
 
     // Set viewport
     await page.setViewport({ width: 1366, height: 768 });
 
+    // Authenticate proxy
+    // uncomment if proxy is needed
+    // console.log("Authenticating proxy...");
+    // await page.authenticate({
+    //   username: PROXY_CONFIG.username,
+    //   password: PROXY_CONFIG.password,
+    // });
+
     // Navigate to the Income Conductor app
     console.log("Navigating to Income Conductor...");
     await page.goto(SITE_URL, {
       waitUntil: "networkidle2",
-      timeout: 30000,
+      timeout: 20000,
     });
 
     console.log("Page loaded successfully!");
@@ -199,7 +209,7 @@ async function runAutomation(formData: any) {
           "No login form detected, user might already be logged in or page structure is different"
         );
       }
-    } catch (loginError: any) {
+    } catch (loginError) {
       console.log(
         "Login attempt completed with some issues:",
         loginError.message
@@ -222,8 +232,8 @@ async function runAutomation(formData: any) {
       await page.evaluate(() => {
         const planTitles = document.querySelectorAll("h5.card-title");
         for (let title of planTitles) {
-          if (title.textContent?.trim() === "Plan") {
-            (title as HTMLElement).click();
+          if (title.textContent.trim() === "Plan") {
+            title.click();
             return;
           }
         }
@@ -231,7 +241,7 @@ async function runAutomation(formData: any) {
 
       await wait(1000);
       console.log("Plan card clicked successfully");
-    } catch (error: any) {
+    } catch (error) {
       console.log("Could not click Plan card:", error.message);
     }
 
@@ -245,14 +255,18 @@ async function runAutomation(formData: any) {
       // Click on the client link containing "Average, Joe"
       await page.evaluate(() => {
         const links = document.querySelectorAll('a[href*="/clients/view/"]');
-        if (links[1]) {
-          (links[1] as HTMLElement).click(); // TODO should the user number be a parameter of function?
-        }
+        links[1].click(); // TODO should the user number be a parameter of function?
+        // for (let link of links) {
+        //   if (link.textContent.includes('Average, Joe')) {
+        //     link.click();
+        //     return;
+        //   }
+        // }
       });
 
       await wait(500);
-      console.log("Client link clicked successfully");
-    } catch (error: any) {
+      console.log("link 1 clicked successfully"); // TODO change
+    } catch (error) {
       console.log("Could not click client link:", error.message);
     }
 
@@ -266,8 +280,8 @@ async function runAutomation(formData: any) {
       await page.evaluate(() => {
         const links = document.querySelectorAll("a.nav-link");
         for (let link of links) {
-          if (link.textContent?.trim() === "Profile") {
-            (link as HTMLElement).click();
+          if (link.textContent.trim() === "Profile") {
+            link.click();
             return;
           }
         }
@@ -275,7 +289,7 @@ async function runAutomation(formData: any) {
 
       await wait(500);
       console.log("Profile link clicked successfully");
-    } catch (error: any) {
+    } catch (error) {
       console.log("Could not click Profile link:", error.message);
     }
 
@@ -300,7 +314,7 @@ async function runAutomation(formData: any) {
       }
 
       await wait(100);
-    } catch (error: any) {
+    } catch (error) {
       console.log("Could not fill date of birth field:", error.message);
     }
 
@@ -314,10 +328,10 @@ async function runAutomation(formData: any) {
       await page.evaluate(() => {
         const spans = document.querySelectorAll("span");
         for (let span of spans) {
-          if (span.textContent?.trim() === "Save changes") {
+          if (span.textContent.trim() === "Save changes") {
             // Click the span or its parent button
             const button = span.closest("button") || span;
-            (button as HTMLElement).click();
+            button.click();
             return;
           }
         }
@@ -325,7 +339,7 @@ async function runAutomation(formData: any) {
 
       await wait(500);
       console.log("Save changes button clicked successfully");
-    } catch (error: any) {
+    } catch (error) {
       console.log("Could not click Save changes button:", error.message);
     }
 
@@ -339,8 +353,8 @@ async function runAutomation(formData: any) {
       await page.evaluate(() => {
         const links = document.querySelectorAll("a.nav-link");
         for (let link of links) {
-          if (link.textContent?.trim() === "Plans") {
-            (link as HTMLElement).click();
+          if (link.textContent.trim() === "Plans") {
+            link.click();
             return;
           }
         }
@@ -348,7 +362,7 @@ async function runAutomation(formData: any) {
 
       await wait(500);
       console.log("Plans link clicked successfully");
-    } catch (error: any) {
+    } catch (error) {
       console.log("Could not click Plans link:", error.message);
     }
 
@@ -362,14 +376,14 @@ async function runAutomation(formData: any) {
       await page.evaluate(() => {
         const chevronIcons = document.querySelectorAll("i.fa-chevron-down");
         if (chevronIcons.length > 0) {
-          (chevronIcons[0] as HTMLElement).click();
+          chevronIcons[0].click();
           return;
         }
       });
 
       await wait(300);
       console.log("Chevron-down icon clicked successfully");
-    } catch (error: any) {
+    } catch (error) {
       console.log("Could not click chevron-down icon:", error.message);
     }
 
@@ -383,8 +397,8 @@ async function runAutomation(formData: any) {
       await page.evaluate(() => {
         const dropdownItems = document.querySelectorAll("a.dropdown-item");
         for (let item of dropdownItems) {
-          if (item.textContent?.trim() === "Edit") {
-            (item as HTMLElement).click();
+          if (item.textContent.trim() === "Edit") {
+            item.click();
             return;
           }
         }
@@ -392,7 +406,7 @@ async function runAutomation(formData: any) {
 
       await wait(500);
       console.log("Edit dropdown item clicked successfully");
-    } catch (error: any) {
+    } catch (error) {
       console.log("Could not click Edit dropdown item:", error.message);
     }
 
@@ -478,7 +492,7 @@ async function runAutomation(formData: any) {
       }
 
       await wait(500);
-    } catch (error: any) {
+    } catch (error) {
       console.log("Could not click SweetAlert2 OK button:", error.message);
       console.log("Continuing automation without OK button click...");
     }
@@ -545,7 +559,7 @@ async function runAutomation(formData: any) {
       }
 
       await wait(500);
-    } catch (error: any) {
+    } catch (error) {
       console.log("Could not click Done button:", error.message);
       console.log("Continuing automation without Done button click...");
     }
@@ -574,7 +588,7 @@ async function runAutomation(formData: any) {
       }
 
       await wait(500);
-    } catch (error: any) {
+    } catch (error) {
       console.log("Could not fill investment amount field:", error.message);
     }
 
@@ -594,7 +608,7 @@ async function runAutomation(formData: any) {
       }
 
       await wait(500);
-    } catch (error: any) {
+    } catch (error) {
       console.log("Could not click Clients tab:", error.message);
     }
 
@@ -668,7 +682,7 @@ async function runAutomation(formData: any) {
         } else {
           console.log("Retirement month select not found");
         }
-      } catch (error: any) {
+      } catch (error) {
         console.log("Could not select retirement month:", error.message);
       }
 
@@ -693,12 +707,12 @@ async function runAutomation(formData: any) {
         } else {
           console.log("Retirement year select not found");
         }
-      } catch (error: any) {
+      } catch (error) {
         console.log("Could not select retirement year:", error.message);
       }
 
       await wait(500);
-    } catch (error: any) {
+    } catch (error) {
       console.log("Could not fill client fields:", error.message);
     }
 
@@ -751,7 +765,7 @@ async function runAutomation(formData: any) {
             ) {
               return button;
             }
-            if ((button as HTMLInputElement).value && (button as HTMLInputElement).value.toLowerCase().includes("update")) {
+            if (button.value && button.value.toLowerCase().includes("update")) {
               return button;
             }
           }
@@ -774,7 +788,7 @@ async function runAutomation(formData: any) {
       }
 
       await wait(700);
-    } catch (error: any) {
+    } catch (error) {
       console.log("Could not click Update button:", error.message);
       console.log("Continuing automation without Update button click...");
     }
@@ -794,10 +808,10 @@ async function runAutomation(formData: any) {
         );
         for (let item of listItems) {
           const label = item.querySelector("span");
-          if (label && label.textContent?.trim() === "Income /mo (Gross)") {
+          if (label && label.textContent.trim() === "Income /mo (Gross)") {
             const badge = item.querySelector(".badge");
             if (badge) {
-              return badge.textContent?.trim();
+              return badge.textContent.trim();
             }
           }
         }
@@ -811,7 +825,7 @@ async function runAutomation(formData: any) {
       } else {
         console.log("Income /mo (Gross) value not found in plan summary");
       }
-    } catch (error: any) {
+    } catch (error) {
       console.log("Could not extract Income /mo (Gross) value:", error.message);
     }
 
@@ -822,13 +836,13 @@ async function runAutomation(formData: any) {
         const rows = document.querySelectorAll("tr");
         for (let row of rows) {
           const firstCell = row.querySelector("td");
-          if (firstCell && firstCell.textContent?.trim() === "Start of Plan") {
+          if (firstCell && firstCell.textContent.trim() === "Start of Plan") {
             const rightAlignedCells = row.querySelectorAll("td.text-right");
             if (rightAlignedCells.length > 1) {
               // Collect all values except the last one into an array
               const plans = [];
               for (let i = 0; i < rightAlignedCells.length - 1; i++) {
-                plans.push(rightAlignedCells[i].textContent?.trim());
+                plans.push(rightAlignedCells[i].textContent.trim());
               }
               return {
                 plans: plans,
@@ -848,8 +862,8 @@ async function runAutomation(formData: any) {
           const cells = rows[i].querySelectorAll("td");
           if (cells.length >= 3) {
             investments.push({
-              year: cells[0].textContent?.trim(),
-              investment: cells[2].textContent?.trim(),
+              year: cells[0].textContent.trim(),
+              investment: cells[2].textContent.trim(),
             });
           }
         }
@@ -874,12 +888,12 @@ async function runAutomation(formData: any) {
       }
       console.log("========================================");
       console.log("Extracted Values:", JSON.stringify(extractedValues));
-    } catch (error: any) {
+    } catch (error) {
       console.log("Could not extract Start of Plan values:", error.message);
     }
 
     return extractedValues;
-  } catch (error: any) {
+  } catch (error) {
     console.error("Automation failed:", error);
     throw new Error(`Automation failed: ${error.message}`);
   } finally {
@@ -890,49 +904,25 @@ async function runAutomation(formData: any) {
     }
   }
 }
+// ========================================
+// COMPLETION & CLEANUP
+// ========================================
 
-export async function POST(request: NextRequest) {
-	try {
-		const body = await request.json();
-		const formData = body?.formData;
-		if (!formData || typeof formData !== 'object') {
-			return NextResponse.json({ error: 'formData object is required.' }, { status: 400 });
-		}
+// Take screenshot for verification
 
-		// List of required properties
-		const requiredProps = [
-			'birthday',
-			'investmentAmount',
-			'retirementAge',
-			'longevityEstimate',
-			'retirementMonth',
-			'retirementYear',
-			'username',
-			'password',
-		];
+// return {
+//   success: true,
+//   pageTitle: pageTitle,
+//   currentUrl: currentUrl,
+//   timestamp: new Date().toISOString(),
+//   formData: formData,
+//   userInputs: {
+//     investmentAmount: formData.investmentAmount || '130000',
+//     retirementAge: formData.retirementAge || '62',
+//     longevityEstimate: formData.longevityEstimate || '100',
+//     birthday: formData.birthday || '07/01/1967'
+//   },
+//   message: 'Browser automation completed successfully with user-provided values. Check automation-screenshot.png for proof.'
+// };
 
-		for (const prop of requiredProps) {
-			if (!(prop in formData)) {
-				return NextResponse.json({ error: `Missing property: ${prop}` }, { status: 400 });
-			}
-			if (typeof formData[prop] !== 'string') {
-				return NextResponse.json({ error: `Property '${prop}' must be a string.` }, { status: 400 });
-			}
-		}
-
-		// Run the automation with the provided formData
-		console.log("Starting automation process...");
-		const result = await runAutomation(formData);
-		
-		console.log("Automation completed successfully");
-		return NextResponse.json(result);
-	} catch (error: unknown) {
-		console.error("Automation error:", error);
-		if (error instanceof SyntaxError) {
-			return NextResponse.json({ error: 'Invalid JSON format.' }, { status: 400 });
-		}
-		return NextResponse.json({ 
-			error: `Automation failed: ${error instanceof Error ? error.message : 'Unknown error'}` 
-		}, { status: 500 });
-	}
-}
+module.exports = { runAutomation };
