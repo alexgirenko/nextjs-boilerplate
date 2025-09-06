@@ -116,7 +116,7 @@ const SITE_URL = "https://app.incomeconductor.com";
  * Wait for a specified amount of time
  * @param {number} ms - Milliseconds to wait
  */
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const wait = (msec: number) => new Promise((resolve) => setTimeout(resolve, msec));
 
 /**
  * Main automation function that handles the complete Income Conductor workflow
