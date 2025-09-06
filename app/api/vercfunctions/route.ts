@@ -1,27 +1,27 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 import puppeteerCore from "puppeteer-core";
 // Ensure Node.js runtime on Vercel and allow longer execution time
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 export const maxDuration = 60; // seconds
 
 async function getBrowser() {
   const isVercel = !!process.env.VERCEL_ENV;
-  
+
   if (isVercel) {
     console.log("Running on Vercel, trying fixed chromium approach...");
-    
+
     // Try the regular chromium with a different approach
     const chromium = (await import("@sparticuz/chromium")).default;
-    
+
     // Set environment variables for better chromium handling
     process.env.FONTCONFIG_PATH = "/tmp";
     process.env.HOME = "/tmp";
-    
+
     // Use a custom executable path that might work better
     const customArgs = [
       "--no-sandbox",
-      "--disable-setuid-sandbox", 
+      "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
       "--disable-accelerated-2d-canvas",
       "--no-first-run",
@@ -48,9 +48,9 @@ async function getBrowser() {
       "--data-path=/tmp/chrome-data",
       "--disk-cache-dir=/tmp/chrome-cache",
       "--remote-debugging-port=9222",
-      "--remote-debugging-address=0.0.0.0"
+      "--remote-debugging-address=0.0.0.0",
     ];
-    
+
     // Try to use chromium's executable path, but with error handling
     let executablePath: string;
     try {
@@ -64,27 +64,28 @@ async function getBrowser() {
         "/usr/bin/chromium",
         "/usr/bin/google-chrome",
         "/opt/google/chrome/chrome",
-        "/snap/bin/chromium"
+        "/snap/bin/chromium",
       ];
-      
-      const fs = await import('fs');
-      executablePath = possiblePaths.find(path => {
-        try {
-          return fs.existsSync(path);
-        } catch {
-          return false;
-        }
-      }) || "/usr/bin/chromium-browser"; // Default fallback
-      
+
+      const fs = await import("fs");
+      executablePath =
+        possiblePaths.find((path) => {
+          try {
+            return fs.existsSync(path);
+          } catch {
+            return false;
+          }
+        }) || "/usr/bin/chromium-browser"; // Default fallback
+
       console.log("Using fallback executable path:", executablePath);
     }
-    
+
     return await puppeteerCore.launch({
       headless: true,
       args: customArgs,
       executablePath: executablePath,
       ignoreDefaultArgs: ["--disable-extensions"],
-      timeout: 30000
+      timeout: 30000,
     });
   } else {
     console.log("Running locally, using full puppeteer...");
@@ -104,9 +105,7 @@ async function getBrowser() {
   }
 }
 
-// ============================================
-// CONFIGURATION
-// ============================================
+
 const SITE_URL = "https://app.incomeconductor.com";
 
 // ============================================
@@ -816,7 +815,12 @@ async function runAutomation(formData: any) {
             ) {
               return button;
             }
-            if ((button as HTMLInputElement).value && (button as HTMLInputElement).value.toLowerCase().includes("update")) {
+            if (
+              (button as HTMLInputElement).value &&
+              (button as HTMLInputElement).value
+                .toLowerCase()
+                .includes("update")
+            ) {
               return button;
             }
           }
@@ -957,47 +961,64 @@ async function runAutomation(formData: any) {
 }
 
 export async function POST(request: NextRequest) {
-	try {
-		const body = await request.json();
-		const formData = body?.formData;
-		if (!formData || typeof formData !== 'object') {
-			return NextResponse.json({ error: 'formData object is required.' }, { status: 400 });
-		}
+  try {
+    const body = await request.json();
+    const formData = body?.formData;
+    if (!formData || typeof formData !== "object") {
+      return NextResponse.json(
+        { error: "formData object is required." },
+        { status: 400 }
+      );
+    }
 
-		// List of required properties
-		const requiredProps = [
-			'birthday',
-			'investmentAmount',
-			'retirementAge',
-			'longevityEstimate',
-			'retirementMonth',
-			'retirementYear',
-			'username',
-			'password',
-		];
+    // List of required properties
+    const requiredProps = [
+      "birthday",
+      "investmentAmount",
+      "retirementAge",
+      "longevityEstimate",
+      "retirementMonth",
+      "retirementYear",
+      "username",
+      "password",
+    ];
 
-		for (const prop of requiredProps) {
-			if (!(prop in formData)) {
-				return NextResponse.json({ error: `Missing property: ${prop}` }, { status: 400 });
-			}
-			if (typeof formData[prop] !== 'string') {
-				return NextResponse.json({ error: `Property '${prop}' must be a string.` }, { status: 400 });
-			}
-		}
+    for (const prop of requiredProps) {
+      if (!(prop in formData)) {
+        return NextResponse.json(
+          { error: `Missing property: ${prop}` },
+          { status: 400 }
+        );
+      }
+      if (typeof formData[prop] !== "string") {
+        return NextResponse.json(
+          { error: `Property '${prop}' must be a string.` },
+          { status: 400 }
+        );
+      }
+    }
 
-		// Run the automation with the provided formData
-		console.log("Starting automation process...");
-		const result = await runAutomation(formData);
-		
-		console.log("Automation completed successfully");
-		return NextResponse.json(result);
-	} catch (error: unknown) {
-		console.error("Automation error:", error);
-		if (error instanceof SyntaxError) {
-			return NextResponse.json({ error: 'Invalid JSON format.' }, { status: 400 });
-		}
-		return NextResponse.json({ 
-			error: `Automation failed: ${error instanceof Error ? error.message : 'Unknown error'}` 
-		}, { status: 500 });
-	}
+    // Run the automation with the provided formData
+    console.log("Starting automation process...");
+    const result = await runAutomation(formData);
+
+    console.log("Automation completed successfully");
+    return NextResponse.json(result);
+  } catch (error: unknown) {
+    console.error("Automation error:", error);
+    if (error instanceof SyntaxError) {
+      return NextResponse.json(
+        { error: "Invalid JSON format." },
+        { status: 400 }
+      );
+    }
+    return NextResponse.json(
+      {
+        error: `Automation failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+      },
+      { status: 500 }
+    );
+  }
 }
