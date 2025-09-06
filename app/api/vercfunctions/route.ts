@@ -41,8 +41,14 @@ async function runAutomation(formData: any) {
     };
 
     if (isVercel) {
+      console.log("Running on Vercel, setting up Chromium...");
       const chromium = (await import("@sparticuz/chromium")).default;
+      
       puppeteer = await import("puppeteer-core");
+      
+      const executablePath = await chromium.executablePath();
+      console.log("Chromium executable path:", executablePath);
+      
       launchOptions = {
         ...launchOptions,
         args: [
@@ -54,10 +60,19 @@ async function runAutomation(formData: any) {
           "--no-first-run",
           "--no-zygote",
           "--disable-gpu",
+          "--disable-web-security",
+          "--disable-features=VizDisplayCompositor",
+          "--disable-background-timer-throttling",
+          "--disable-backgrounding-occluded-windows",
+          "--disable-renderer-backgrounding",
+          "--disable-extension",
+          "--disable-ipc-flooding-protection",
+          "--single-process",
         ],
-        executablePath: await chromium.executablePath(),
+        executablePath: executablePath,
       };
     } else {
+      console.log("Running locally, using regular puppeteer...");
       puppeteer = await import("puppeteer");
       launchOptions = {
         ...launchOptions,
