@@ -9,12 +9,78 @@ async function getBrowser() {
   const isVercel = !!process.env.VERCEL_ENV;
   
   if (isVercel) {
-    console.log("Running on Vercel, using chromium-min...");
+    console.log("Running on Vercel, debugging file system...");
     const chromium = (await import("@sparticuz/chromium-min")).default;
     
     // Set the FONTCONFIG_PATH to avoid font config errors
     process.env.FONTCONFIG_PATH = "/tmp";
     
+    // Debug: Let's explore the file system structure
+    const fs = await import('fs');
+    const path = await import('path');
+    
+    console.log("=== DEBUGGING VERCEL FILE SYSTEM ===");
+    
+    // Check various possible locations
+    const possiblePaths = [
+      "/var/task/node_modules/@sparticuz/chromium-min",
+      "/var/task/node_modules/@sparticuz/chromium-min/bin",
+      "/opt/nodejs/node_modules/@sparticuz/chromium-min",
+      "/opt/nodejs/node_modules/@sparticuz/chromium-min/bin",
+      "./node_modules/@sparticuz/chromium-min",
+      "./node_modules/@sparticuz/chromium-min/bin",
+      process.cwd() + "/node_modules/@sparticuz/chromium-min",
+    ];
+    
+    for (const checkPath of possiblePaths) {
+      try {
+        if (fs.existsSync(checkPath)) {
+          console.log(`✅ EXISTS: ${checkPath}`);
+          const files = fs.readdirSync(checkPath);
+          console.log(`   Files: ${files.slice(0, 10).join(', ')}${files.length > 10 ? '...' : ''}`);
+        } else {
+          console.log(`❌ NOT FOUND: ${checkPath}`);
+        }
+      } catch (e) {
+        console.log(`❌ ERROR checking ${checkPath}:`, e);
+      }
+    }
+    
+    // Check what chromium.executablePath() returns
+    try {
+      const chromiumPath = await chromium.executablePath();
+      console.log(`🔍 chromium.executablePath() returns: ${chromiumPath}`);
+      
+      if (fs.existsSync(chromiumPath)) {
+        console.log(`✅ chromium.executablePath() file EXISTS`);
+      } else {
+        console.log(`❌ chromium.executablePath() file NOT FOUND`);
+        
+        // Check parent directory
+        const parentDir = path.dirname(chromiumPath);
+        console.log(`🔍 Checking parent directory: ${parentDir}`);
+        if (fs.existsSync(parentDir)) {
+          const parentFiles = fs.readdirSync(parentDir);
+          console.log(`   Parent dir files: ${parentFiles.join(', ')}`);
+        }
+      }
+    } catch (e) {
+      console.log(`❌ ERROR getting chromium.executablePath():`, e);
+    }
+    
+    // Check current working directory
+    console.log(`🔍 Current working directory: ${process.cwd()}`);
+    try {
+      const cwdFiles = fs.readdirSync(process.cwd());
+      console.log(`   CWD files: ${cwdFiles.slice(0, 10).join(', ')}${cwdFiles.length > 10 ? '...' : ''}`);
+    } catch (e) {
+      console.log(`❌ ERROR reading CWD:`, e);
+    }
+    
+    console.log("=== END DEBUGGING ===");
+    
+    // For now, let's try to use the default chromium.executablePath() 
+    // and see what the actual error is
     return await puppeteerCore.launch({
       headless: true,
       args: [
@@ -44,7 +110,7 @@ async function getBrowser() {
         "--disable-prompt-on-repost",
         "--disable-sync",
       ],
-      executablePath: "/var/task/node_modules/@sparticuz/chromium-min/bin/chromium",
+      executablePath: await chromium.executablePath(),
     });
   } else {
     console.log("Running locally, using full puppeteer...");
