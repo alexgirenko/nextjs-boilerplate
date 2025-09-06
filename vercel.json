@@ -4,10 +4,5 @@
       "maxDuration": 60,
       "memory": 1024
     }
-  },
-  "outputFileTracing": {
-    "include": [
-      "node_modules/@sparticuz/chromium/bin/**"
-    ]
   }
 }

@@ -7,8 +7,10 @@ const nextConfig: NextConfig = {
   // Force-include chromium files in the serverless function bundle
   outputFileTracingIncludes: {
     "/app/api/vercfunctions/route": [
+      "./node_modules/@sparticuz/chromium/**",
       "./node_modules/@sparticuz/chromium/bin/**",
       "./node_modules/@sparticuz/chromium/**/*.br",
+      "./node_modules/@sparticuz/chromium/**/*.tar.gz",
     ],
   },
 
@@ -19,6 +21,12 @@ const nextConfig: NextConfig = {
       config.externals = config.externals.filter(
         (external: any) => external !== '@sparticuz/chromium'
       );
+      
+      // Add module alias for better resolution
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        '@sparticuz/chromium': require.resolve('@sparticuz/chromium'),
+      };
     }
     return config;
   },
