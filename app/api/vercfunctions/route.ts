@@ -9,134 +9,43 @@ async function getBrowser() {
   const isVercel = !!process.env.VERCEL_ENV;
   
   if (isVercel) {
-    console.log("Running on Vercel, debugging chromium packages...");
+    console.log("Running on Vercel, using chrome-aws-lambda...");
     
-    // Set the FONTCONFIG_PATH to avoid font config errors
-    process.env.FONTCONFIG_PATH = "/tmp";
+    // Use chrome-aws-lambda which is more reliable for serverless
+    const chromium = await import("chrome-aws-lambda");
     
-    // Comprehensive debugging for both chromium packages
-    const fs = await import('fs');
-    const path = await import('path');
-    
-    const debugInfo: any = {
-      environment: "Vercel",
-      timestamp: new Date().toISOString(),
-      cwd: process.cwd(),
-      chromiumRegular: {
-        packageExists: false,
-        binExists: false,
-        files: [],
-        executablePath: null,
-        executableExists: false,
-        error: null
-      },
-      chromiumMin: {
-        packageExists: false,
-        binExists: false,
-        files: [],
-        executablePath: null,
-        executableExists: false,
-        error: null
-      },
-      fileSystemExploration: [],
-      nodeModulesContents: []
-    };
-    
-    // Check regular chromium package
-    try {
-      const regularChromium = (await import("@sparticuz/chromium")).default;
-      debugInfo.chromiumRegular.packageExists = true;
-      
-      // Check if package directory exists
-      const regularPath = "/var/task/node_modules/@sparticuz/chromium";
-      if (fs.existsSync(regularPath)) {
-        debugInfo.chromiumRegular.files = fs.readdirSync(regularPath);
-        debugInfo.chromiumRegular.binExists = fs.existsSync(path.join(regularPath, "bin"));
-      }
-      
-      // Try to get executable path
-      try {
-        const execPath = await regularChromium.executablePath();
-        debugInfo.chromiumRegular.executablePath = execPath;
-        debugInfo.chromiumRegular.executableExists = fs.existsSync(execPath);
-      } catch (e: any) {
-        debugInfo.chromiumRegular.error = e?.message || 'Unknown error';
-      }
-    } catch (e: any) {
-      debugInfo.chromiumRegular.error = `Import failed: ${e?.message}`;
-    }
-    
-    // Check chromium-min package
-    try {
-      const minChromium = (await import("@sparticuz/chromium-min")).default;
-      debugInfo.chromiumMin.packageExists = true;
-      
-      // Check if package directory exists
-      const minPath = "/var/task/node_modules/@sparticuz/chromium-min";
-      if (fs.existsSync(minPath)) {
-        debugInfo.chromiumMin.files = fs.readdirSync(minPath);
-        debugInfo.chromiumMin.binExists = fs.existsSync(path.join(minPath, "bin"));
-      }
-      
-      // Try to get executable path
-      try {
-        const execPath = await minChromium.executablePath();
-        debugInfo.chromiumMin.executablePath = execPath;
-        debugInfo.chromiumMin.executableExists = fs.existsSync(execPath);
-      } catch (e: any) {
-        debugInfo.chromiumMin.error = e?.message || 'Unknown error';
-      }
-    } catch (e: any) {
-      debugInfo.chromiumMin.error = `Import failed: ${e?.message}`;
-    }
-    
-    // Explore file system structure
-    const pathsToCheck = [
-      "/var/task/node_modules/@sparticuz",
-      "/opt/nodejs/node_modules/@sparticuz",
-      "/tmp",
-      "/var/task"
-    ];
-    
-    for (const checkPath of pathsToCheck) {
-      try {
-        if (fs.existsSync(checkPath)) {
-          const files = fs.readdirSync(checkPath);
-          debugInfo.fileSystemExploration.push({
-            path: checkPath,
-            exists: true,
-            files: files.slice(0, 20)
-          });
-        } else {
-          debugInfo.fileSystemExploration.push({
-            path: checkPath,
-            exists: false,
-            files: []
-          });
-        }
-      } catch (e: any) {
-        debugInfo.fileSystemExploration.push({
-          path: checkPath,
-          exists: false,
-          error: e?.message
-        });
-      }
-    }
-    
-    // Check what's in node_modules
-    try {
-      const nodeModulesPath = "/var/task/node_modules";
-      if (fs.existsSync(nodeModulesPath)) {
-        const nodeModulesContents = fs.readdirSync(nodeModulesPath);
-        debugInfo.nodeModulesContents = nodeModulesContents.slice(0, 30);
-      }
-    } catch (e: any) {
-      debugInfo.nodeModulesContents = [`Error: ${e?.message}`];
-    }
-    
-    // Return debug info instead of trying to launch browser
-    throw new Error(`CHROMIUM_DEBUG_INFO: ${JSON.stringify(debugInfo, null, 2)}`);
-    
+    return await puppeteerCore.launch({
+      args: [
+        ...chromium.default.args,
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-accelerated-2d-canvas",
+        "--no-first-run",
+        "--no-zygote",
+        "--disable-gpu",
+        "--disable-web-security",
+        "--disable-features=VizDisplayCompositor",
+        "--disable-background-timer-throttling",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding",
+        "--disable-extension",
+        "--disable-ipc-flooding-protection",
+        "--single-process",
+        "--disable-crash-reporter",
+        "--disable-component-extensions-with-background-pages",
+        "--disable-default-apps",
+        "--mute-audio",
+        "--no-default-browser-check",
+        "--no-pings",
+        "--disable-hang-monitor",
+        "--disable-prompt-on-repost",
+        "--disable-sync",
+      ],
+      defaultViewport: chromium.default.defaultViewport,
+      executablePath: await chromium.default.executablePath,
+      headless: chromium.default.headless,
+    });
   } else {
     console.log("Running locally, using full puppeteer...");
     const puppeteer = await import("puppeteer");
