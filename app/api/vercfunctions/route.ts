@@ -1,4 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import chromium from '@sparticuz/chromium';
+// Ensure Node.js runtime on Vercel and allow longer execution time
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60; // seconds
 
 // ============================================
 // CONFIGURATION
@@ -42,7 +47,6 @@ async function runAutomation(formData: any) {
 
     if (isVercel) {
       console.log("Running on Vercel, setting up Chromium...");
-      const chromium = (await import("@sparticuz/chromium")).default;
       
       puppeteer = await import("puppeteer-core");
       
