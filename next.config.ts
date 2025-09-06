@@ -1,24 +1,24 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Ensure these native deps aren't bundled incorrectly
-  serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core"],
+  // Don't externalize @sparticuz/chromium so it gets bundled
+  serverExternalPackages: ["puppeteer-core"],
 
-  // Force-include ALL chromium files in the serverless function bundle
-  // Use more aggressive file inclusion to ensure binaries are bundled
+  // Force-include chromium files in the serverless function bundle
   outputFileTracingIncludes: {
     "/app/api/vercfunctions/route": [
-      "./node_modules/@sparticuz/chromium/**/*",
-      "./node_modules/@sparticuz/chromium-min/**/*",
+      "./node_modules/@sparticuz/chromium/bin/**",
+      "./node_modules/@sparticuz/chromium/**/*.br",
     ],
   },
 
   // Webpack configuration to handle chromium binaries
   webpack: (config, { isServer }) => {
     if (isServer) {
-      config.externals.push({
-        '@sparticuz/chromium': '@sparticuz/chromium',
-      });
+      // Don't externalize @sparticuz/chromium - we want it bundled
+      config.externals = config.externals.filter(
+        (external: any) => external !== '@sparticuz/chromium'
+      );
     }
     return config;
   },

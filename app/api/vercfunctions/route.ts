@@ -15,7 +15,28 @@ async function getBrowser() {
       const chromium = (await import("@sparticuz/chromium")).default;
       const puppeteerCore = await import("puppeteer-core");
 
+      // Set environment variables for chromium
+      process.env.FONTCONFIG_PATH = "/tmp";
+      process.env.HOME = "/tmp";
+
       console.log("Launching @sparticuz/chromium browser...");
+      
+      // Try to get executable path first to check if binaries are available
+      let executablePath: string;
+      try {
+        executablePath = await chromium.executablePath();
+        console.log("✅ Found chromium executable at:", executablePath);
+      } catch (pathError: any) {
+        console.log("❌ Failed to get executable path:", pathError.message);
+        
+        // Try alternative approach with manual binary path
+        try {
+          executablePath = "/tmp/chromium";
+          console.log("✅ Using fallback path:", executablePath);
+        } catch (altError: any) {
+          throw new Error(`CHROMIUM_PATH_ERROR: ${pathError.message} | Alternative failed: ${altError.message}`);
+        }
+      }
       
       const browser = await puppeteerCore.launch({
         args: [
@@ -23,8 +44,11 @@ async function getBrowser() {
           "--hide-scrollbars",
           "--disable-web-security",
           "--disable-features=VizDisplayCompositor",
+          "--disable-dev-shm-usage",
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
         ],
-        executablePath: await chromium.executablePath(),
+        executablePath: executablePath,
         headless: true,
         defaultViewport: { width: 1366, height: 768 },
       });
