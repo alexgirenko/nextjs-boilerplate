@@ -9,104 +9,26 @@ async function getBrowser() {
   const isVercel = !!process.env.VERCEL_ENV;
 
   if (isVercel) {
-    console.log("Running on Vercel, trying Playwright approach...");
-
+    console.log("Running on Vercel, using chrome-aws-lambda...");
+    
     try {
-      // Try Playwright with AWS Lambda support first
-      const playwrightAws = await import("playwright-aws-lambda");
+      const chromium = await import("chrome-aws-lambda");
+      const puppeteerCore = await import("puppeteer-core");
+
+      console.log("Launching chrome-aws-lambda browser...");
       
-      const browser = await playwrightAws.launchChromium({
-        headless: true,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-accelerated-2d-canvas",
-          "--no-first-run",
-          "--no-zygote",
-          "--disable-gpu",
-          "--disable-web-security",
-          "--disable-features=VizDisplayCompositor",
-          "--disable-background-timer-throttling",
-          "--disable-backgrounding-occluded-windows",
-          "--disable-renderer-backgrounding",
-          "--disable-extension",
-          "--disable-ipc-flooding-protection",
-          "--single-process",
-          "--disable-crash-reporter",
-          "--disable-component-extensions-with-background-pages",
-          "--disable-default-apps",
-          "--mute-audio",
-          "--no-default-browser-check",
-          "--no-pings",
-          "--disable-hang-monitor",
-          "--disable-prompt-on-repost",
-          "--disable-sync",
-          "--user-data-dir=/tmp/chrome-user-data",
-          "--data-path=/tmp/chrome-data",
-          "--disk-cache-dir=/tmp/chrome-cache",
-        ],
+      const browser = await puppeteerCore.launch({
+        args: chromium.default.args,
+        defaultViewport: chromium.default.defaultViewport,
+        executablePath: await chromium.default.executablePath,
+        headless: chromium.default.headless,
       });
-      
-      console.log("✅ Successfully launched Playwright Chromium");
+
+      console.log("✅ Successfully launched chrome-aws-lambda browser");
       return browser;
       
-    } catch (playwrightError: any) {
-      console.log("❌ Playwright approach failed:", playwrightError.message);
-      
-      // Fallback to puppeteer approach
-      console.log("Trying fallback to Puppeteer...");
-      
-      try {
-        const puppeteerCore = (await import("puppeteer-core")).default;
-        const chromium = (await import("@sparticuz/chromium")).default;
-
-        // Set environment variables for better chromium handling
-        process.env.FONTCONFIG_PATH = "/tmp";
-        process.env.HOME = "/tmp";
-
-        const executablePath = await chromium.executablePath();
-        console.log("✅ Using chromium.executablePath():", executablePath);
-
-        return await puppeteerCore.launch({
-          headless: true,
-          args: [
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-accelerated-2d-canvas",
-            "--no-first-run",
-            "--no-zygote",
-            "--disable-gpu",
-            "--disable-web-security",
-            "--disable-features=VizDisplayCompositor",
-            "--disable-background-timer-throttling",
-            "--disable-backgrounding-occluded-windows",
-            "--disable-renderer-backgrounding",
-            "--disable-extension",
-            "--disable-ipc-flooding-protection",
-            "--single-process",
-            "--disable-crash-reporter",
-            "--disable-component-extensions-with-background-pages",
-            "--disable-default-apps",
-            "--mute-audio",
-            "--no-default-browser-check",
-            "--no-pings",
-            "--disable-hang-monitor",
-            "--disable-prompt-on-repost",
-            "--disable-sync",
-            "--user-data-dir=/tmp/chrome-user-data",
-            "--data-path=/tmp/chrome-data",
-            "--disk-cache-dir=/tmp/chrome-cache",
-          ],
-          executablePath: executablePath,
-          ignoreDefaultArgs: ["--disable-extensions"],
-          timeout: 30000,
-        });
-        
-      } catch (puppeteerError: any) {
-        throw new Error(`ALL_BROWSER_METHODS_FAILED: Playwright failed: ${playwrightError.message}, Puppeteer failed: ${puppeteerError.message}`);
-      }
+    } catch (error: any) {
+      throw new Error(`CHROME_AWS_LAMBDA_FAILED: ${error.message}`);
     }
   } else {
     console.log("Running locally, using full puppeteer...");
@@ -124,144 +46,6 @@ async function getBrowser() {
       ],
     });
   }
-}
-
-// Browser adapter to handle Playwright vs Puppeteer differences
-class BrowserAdapter {
-  private readonly browser: any;
-  private readonly isPlaywright: boolean;
-
-  constructor(browser: any, isPlaywright: boolean) {
-    this.browser = browser;
-    this.isPlaywright = isPlaywright;
-  }
-
-  async newPage() {
-    if (this.isPlaywright) {
-      const context = await this.browser.newContext();
-      return new PageAdapter(await context.newPage(), this.isPlaywright);
-    } else {
-      return new PageAdapter(await this.browser.newPage(), this.isPlaywright);
-    }
-  }
-
-  async close() {
-    return await this.browser.close();
-  }
-}
-
-class PageAdapter {
-  private readonly page: any;
-  private readonly isPlaywright: boolean;
-
-  constructor(page: any, isPlaywright: boolean) {
-    this.page = page;
-    this.isPlaywright = isPlaywright;
-  }
-
-  async goto(url: string, options?: any) {
-    return await this.page.goto(url, options);
-  }
-
-  async waitForSelector(selector: string, options?: any) {
-    return await this.page.waitForSelector(selector, options);
-  }
-
-  async click(selector: string, options?: any) {
-    return await this.page.click(selector, options);
-  }
-
-  async type(selector: string, text: string, options?: any) {
-    if (this.isPlaywright) {
-      await this.page.fill(selector, text);
-    } else {
-      await this.page.type(selector, text, options);
-    }
-  }
-
-  async evaluate(fn: any, ...args: any[]) {
-    return await this.page.evaluate(fn, ...args);
-  }
-
-  async screenshot(options?: any) {
-    return await this.page.screenshot(options);
-  }
-
-  async close() {
-    return await this.page.close();
-  }
-
-  async setViewport(viewport: any) {
-    if (this.isPlaywright) {
-      await this.page.setViewportSize(viewport);
-    } else {
-      await this.page.setViewport(viewport);
-    }
-  }
-
-  async $(selector: string) {
-    if (this.isPlaywright) {
-      return await this.page.locator(selector).first();
-    } else {
-      return await this.page.$(selector);
-    }
-  }
-
-  async select(selector: string, value: string) {
-    if (this.isPlaywright) {
-      await this.page.selectOption(selector, value);
-    } else {
-      await this.page.select(selector, value);
-    }
-  }
-
-  get keyboard() {
-    return {
-      press: async (key: string) => {
-        if (this.isPlaywright) {
-          await this.page.keyboard.press(key);
-        } else {
-          await this.page.keyboard.press(key);
-        }
-      },
-      down: async (key: string) => {
-        if (this.isPlaywright) {
-          await this.page.keyboard.down(key);
-        } else {
-          await this.page.keyboard.down(key);
-        }
-      },
-      up: async (key: string) => {
-        if (this.isPlaywright) {
-          await this.page.keyboard.up(key);
-        } else {
-          await this.page.keyboard.up(key);
-        }
-      }
-    };
-  }
-
-  // Proxy other methods directly
-  get url() {
-    return this.page.url();
-  }
-
-  async content() {
-    return await this.page.content();
-  }
-
-  async waitForTimeout(ms: number) {
-    return await this.page.waitForTimeout(ms);
-  }
-}
-
-async function createBrowserAdapter() {
-  const browser = await getBrowser();
-  
-  // Determine if it's Playwright or Puppeteer based on available methods
-  const isPlaywright = typeof (browser as any).newContext === 'function';
-  
-  return new BrowserAdapter(browser, isPlaywright);
 }
 
 
@@ -283,7 +67,7 @@ const wait = (msec: number) => new Promise((resolve) => setTimeout(resolve, msec
  * @returns {Object} Automation result with extracted data
  */
 async function runAutomation(formData: any) {
-  let browserAdapter: BrowserAdapter | null = null;
+  let browser: any = null;
   let monthlyIncomeGross = null;
   let extractedValues = {
     monthlyIncomeGross: null,
@@ -296,9 +80,9 @@ async function runAutomation(formData: any) {
     // BROWSER INITIALIZATION (Vercel-compatible)
     // ========================================
     console.log("Launching browser...");
-    browserAdapter = await createBrowserAdapter();
+    browser = await getBrowser();
     console.log("Opening new page...");
-    const page = await browserAdapter.newPage();
+    const page = await browser.newPage();
 
     // Set viewport
     await page.setViewport({ width: 1366, height: 768 });
@@ -1112,8 +896,8 @@ async function runAutomation(formData: any) {
     throw new Error(`Automation failed: ${error.message}`);
   } finally {
     // Close the browser if it was opened
-    if (browserAdapter) {
-      await browserAdapter.close();
+    if (browser) {
+      await browser.close();
       console.log("Browser closed");
     }
   }
