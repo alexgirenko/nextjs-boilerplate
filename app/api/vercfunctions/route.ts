@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import puppeteerCore from "puppeteer-core";
+
 // Ensure Node.js runtime on Vercel and allow longer execution time
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,139 +9,105 @@ async function getBrowser() {
   const isVercel = !!process.env.VERCEL_ENV;
 
   if (isVercel) {
-    console.log("Running on Vercel, trying fixed chromium approach...");
+    console.log("Running on Vercel, trying Playwright approach...");
 
-    // Try the regular chromium with a different approach
-    const chromium = (await import("@sparticuz/chromium")).default;
-
-    // Set environment variables for better chromium handling
-    process.env.FONTCONFIG_PATH = "/tmp";
-    process.env.HOME = "/tmp";
-
-    // Use a custom executable path that might work better
-    const customArgs = [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-accelerated-2d-canvas",
-      "--no-first-run",
-      "--no-zygote",
-      "--disable-gpu",
-      "--disable-web-security",
-      "--disable-features=VizDisplayCompositor",
-      "--disable-background-timer-throttling",
-      "--disable-backgrounding-occluded-windows",
-      "--disable-renderer-backgrounding",
-      "--disable-extension",
-      "--disable-ipc-flooding-protection",
-      "--single-process",
-      "--disable-crash-reporter",
-      "--disable-component-extensions-with-background-pages",
-      "--disable-default-apps",
-      "--mute-audio",
-      "--no-default-browser-check",
-      "--no-pings",
-      "--disable-hang-monitor",
-      "--disable-prompt-on-repost",
-      "--disable-sync",
-      "--user-data-dir=/tmp/chrome-user-data",
-      "--data-path=/tmp/chrome-data",
-      "--disk-cache-dir=/tmp/chrome-cache",
-      "--remote-debugging-port=9222",
-      "--remote-debugging-address=0.0.0.0",
-    ];
-
-    // Try to use chromium's executable path, but with error handling
-    let executablePath: string;
     try {
-      executablePath = await chromium.executablePath();
-      console.log("✅ Using chromium.executablePath():", executablePath);
-    } catch (error) {
-      // Comprehensive fallback: explore what's actually available
-      console.log("❌ chromium.executablePath() failed, exploring system...");
+      // Try Playwright with AWS Lambda support first
+      const playwrightAws = await import("playwright-aws-lambda");
       
-      const fs = await import("fs");
-      const { execSync } = await import("child_process");
+      const browser = await playwrightAws.launchChromium({
+        headless: true,
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-accelerated-2d-canvas",
+          "--no-first-run",
+          "--no-zygote",
+          "--disable-gpu",
+          "--disable-web-security",
+          "--disable-features=VizDisplayCompositor",
+          "--disable-background-timer-throttling",
+          "--disable-backgrounding-occluded-windows",
+          "--disable-renderer-backgrounding",
+          "--disable-extension",
+          "--disable-ipc-flooding-protection",
+          "--single-process",
+          "--disable-crash-reporter",
+          "--disable-component-extensions-with-background-pages",
+          "--disable-default-apps",
+          "--mute-audio",
+          "--no-default-browser-check",
+          "--no-pings",
+          "--disable-hang-monitor",
+          "--disable-prompt-on-repost",
+          "--disable-sync",
+          "--user-data-dir=/tmp/chrome-user-data",
+          "--data-path=/tmp/chrome-data",
+          "--disk-cache-dir=/tmp/chrome-cache",
+        ],
+      });
       
-      // First, try to find chromium using 'which' command
-      let whichResult = null;
+      console.log("✅ Successfully launched Playwright Chromium");
+      return browser;
+      
+    } catch (playwrightError: any) {
+      console.log("❌ Playwright approach failed:", playwrightError.message);
+      
+      // Fallback to puppeteer approach
+      console.log("Trying fallback to Puppeteer...");
+      
       try {
-        whichResult = execSync("which chromium-browser || which chromium || which google-chrome || which chrome", { encoding: "utf8" }).trim();
-        console.log("🔍 'which' command found:", whichResult);
-      } catch (e) {
-        console.log("❌ 'which' command failed");
-      }
-      
-      // Explore common directories to see what's available
-      const searchDirs = ["/usr/bin", "/usr/local/bin", "/opt", "/bin"];
-      const foundExecutables: string[] = [];
-      
-      for (const dir of searchDirs) {
-        try {
-          if (fs.existsSync(dir)) {
-            const files = fs.readdirSync(dir);
-            const chromiumFiles = files.filter(file => 
-              file.includes("chrom") || file.includes("google") || file.includes("browser")
-            );
-            if (chromiumFiles.length > 0) {
-              console.log(`🔍 Found in ${dir}:`, chromiumFiles.slice(0, 5));
-              chromiumFiles.forEach(file => {
-                const fullPath = `${dir}/${file}`;
-                if (fs.statSync(fullPath).isFile()) {
-                  foundExecutables.push(fullPath);
-                }
-              });
-            }
-          }
-        } catch (e) {
-          // Ignore errors in directory exploration
-        }
-      }
-      
-      // Prioritize executable selection
-      if (whichResult && fs.existsSync(whichResult)) {
-        executablePath = whichResult;
-        console.log("✅ Using 'which' result:", executablePath);
-      } else if (foundExecutables.length > 0) {
-        // Prefer google-chrome, then chromium variants
-        executablePath = foundExecutables.find(path => path.includes("google-chrome")) ||
-                        foundExecutables.find(path => path.includes("chromium")) ||
-                        foundExecutables[0];
-        console.log("✅ Using found executable:", executablePath);
-      } else {
-        // Last resort: return debugging info instead of trying to launch
-        const debugInfo = {
-          error: "No chromium executable found",
-          searchedDirs: searchDirs,
-          foundExecutables: foundExecutables,
-          whichResult: whichResult,
-          availableInUsrBin: fs.existsSync("/usr/bin") ? fs.readdirSync("/usr/bin").filter(f => f.includes("chrom")).slice(0, 10) : [],
-          systemInfo: {
-            platform: process.platform,
-            arch: process.arch,
-            nodeVersion: process.version,
-            isVercel: process.env.VERCEL,
-            functionRegion: process.env.VERCEL_REGION,
-            chromiumVersion: "unknown",
-          },
-          // Try to list more directories for debugging
-          directoryContents: {
-            "/": fs.existsSync("/") ? fs.readdirSync("/").slice(0, 20) : [],
-            "/usr": fs.existsSync("/usr") ? fs.readdirSync("/usr").slice(0, 20) : [],
-            "/opt": fs.existsSync("/opt") ? fs.readdirSync("/opt").slice(0, 20) : [],
-          }
-        };
-        throw new Error(`CHROMIUM_NOT_FOUND: ${JSON.stringify(debugInfo, null, 2)}`);
+        const puppeteerCore = (await import("puppeteer-core")).default;
+        const chromium = (await import("@sparticuz/chromium")).default;
+
+        // Set environment variables for better chromium handling
+        process.env.FONTCONFIG_PATH = "/tmp";
+        process.env.HOME = "/tmp";
+
+        const executablePath = await chromium.executablePath();
+        console.log("✅ Using chromium.executablePath():", executablePath);
+
+        return await puppeteerCore.launch({
+          headless: true,
+          args: [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-accelerated-2d-canvas",
+            "--no-first-run",
+            "--no-zygote",
+            "--disable-gpu",
+            "--disable-web-security",
+            "--disable-features=VizDisplayCompositor",
+            "--disable-background-timer-throttling",
+            "--disable-backgrounding-occluded-windows",
+            "--disable-renderer-backgrounding",
+            "--disable-extension",
+            "--disable-ipc-flooding-protection",
+            "--single-process",
+            "--disable-crash-reporter",
+            "--disable-component-extensions-with-background-pages",
+            "--disable-default-apps",
+            "--mute-audio",
+            "--no-default-browser-check",
+            "--no-pings",
+            "--disable-hang-monitor",
+            "--disable-prompt-on-repost",
+            "--disable-sync",
+            "--user-data-dir=/tmp/chrome-user-data",
+            "--data-path=/tmp/chrome-data",
+            "--disk-cache-dir=/tmp/chrome-cache",
+          ],
+          executablePath: executablePath,
+          ignoreDefaultArgs: ["--disable-extensions"],
+          timeout: 30000,
+        });
+        
+      } catch (puppeteerError: any) {
+        throw new Error(`ALL_BROWSER_METHODS_FAILED: Playwright failed: ${playwrightError.message}, Puppeteer failed: ${puppeteerError.message}`);
       }
     }
-
-    return await puppeteerCore.launch({
-      headless: true,
-      args: customArgs,
-      executablePath: executablePath,
-      ignoreDefaultArgs: ["--disable-extensions"],
-      timeout: 30000,
-    });
   } else {
     console.log("Running locally, using full puppeteer...");
     const puppeteer = await import("puppeteer");
@@ -158,6 +124,144 @@ async function getBrowser() {
       ],
     });
   }
+}
+
+// Browser adapter to handle Playwright vs Puppeteer differences
+class BrowserAdapter {
+  private readonly browser: any;
+  private readonly isPlaywright: boolean;
+
+  constructor(browser: any, isPlaywright: boolean) {
+    this.browser = browser;
+    this.isPlaywright = isPlaywright;
+  }
+
+  async newPage() {
+    if (this.isPlaywright) {
+      const context = await this.browser.newContext();
+      return new PageAdapter(await context.newPage(), this.isPlaywright);
+    } else {
+      return new PageAdapter(await this.browser.newPage(), this.isPlaywright);
+    }
+  }
+
+  async close() {
+    return await this.browser.close();
+  }
+}
+
+class PageAdapter {
+  private readonly page: any;
+  private readonly isPlaywright: boolean;
+
+  constructor(page: any, isPlaywright: boolean) {
+    this.page = page;
+    this.isPlaywright = isPlaywright;
+  }
+
+  async goto(url: string, options?: any) {
+    return await this.page.goto(url, options);
+  }
+
+  async waitForSelector(selector: string, options?: any) {
+    return await this.page.waitForSelector(selector, options);
+  }
+
+  async click(selector: string, options?: any) {
+    return await this.page.click(selector, options);
+  }
+
+  async type(selector: string, text: string, options?: any) {
+    if (this.isPlaywright) {
+      await this.page.fill(selector, text);
+    } else {
+      await this.page.type(selector, text, options);
+    }
+  }
+
+  async evaluate(fn: any, ...args: any[]) {
+    return await this.page.evaluate(fn, ...args);
+  }
+
+  async screenshot(options?: any) {
+    return await this.page.screenshot(options);
+  }
+
+  async close() {
+    return await this.page.close();
+  }
+
+  async setViewport(viewport: any) {
+    if (this.isPlaywright) {
+      await this.page.setViewportSize(viewport);
+    } else {
+      await this.page.setViewport(viewport);
+    }
+  }
+
+  async $(selector: string) {
+    if (this.isPlaywright) {
+      return await this.page.locator(selector).first();
+    } else {
+      return await this.page.$(selector);
+    }
+  }
+
+  async select(selector: string, value: string) {
+    if (this.isPlaywright) {
+      await this.page.selectOption(selector, value);
+    } else {
+      await this.page.select(selector, value);
+    }
+  }
+
+  get keyboard() {
+    return {
+      press: async (key: string) => {
+        if (this.isPlaywright) {
+          await this.page.keyboard.press(key);
+        } else {
+          await this.page.keyboard.press(key);
+        }
+      },
+      down: async (key: string) => {
+        if (this.isPlaywright) {
+          await this.page.keyboard.down(key);
+        } else {
+          await this.page.keyboard.down(key);
+        }
+      },
+      up: async (key: string) => {
+        if (this.isPlaywright) {
+          await this.page.keyboard.up(key);
+        } else {
+          await this.page.keyboard.up(key);
+        }
+      }
+    };
+  }
+
+  // Proxy other methods directly
+  get url() {
+    return this.page.url();
+  }
+
+  async content() {
+    return await this.page.content();
+  }
+
+  async waitForTimeout(ms: number) {
+    return await this.page.waitForTimeout(ms);
+  }
+}
+
+async function createBrowserAdapter() {
+  const browser = await getBrowser();
+  
+  // Determine if it's Playwright or Puppeteer based on available methods
+  const isPlaywright = typeof (browser as any).newContext === 'function';
+  
+  return new BrowserAdapter(browser, isPlaywright);
 }
 
 
@@ -179,7 +283,7 @@ const wait = (msec: number) => new Promise((resolve) => setTimeout(resolve, msec
  * @returns {Object} Automation result with extracted data
  */
 async function runAutomation(formData: any) {
-  let browser: any;
+  let browserAdapter: BrowserAdapter | null = null;
   let monthlyIncomeGross = null;
   let extractedValues = {
     monthlyIncomeGross: null,
@@ -192,9 +296,9 @@ async function runAutomation(formData: any) {
     // BROWSER INITIALIZATION (Vercel-compatible)
     // ========================================
     console.log("Launching browser...");
-    browser = await getBrowser();
+    browserAdapter = await createBrowserAdapter();
     console.log("Opening new page...");
-    const page = await browser.newPage();
+    const page = await browserAdapter.newPage();
 
     // Set viewport
     await page.setViewport({ width: 1366, height: 768 });
@@ -1008,8 +1112,8 @@ async function runAutomation(formData: any) {
     throw new Error(`Automation failed: ${error.message}`);
   } finally {
     // Close the browser if it was opened
-    if (browser) {
-      await browser.close();
+    if (browserAdapter) {
+      await browserAdapter.close();
       console.log("Browser closed");
     }
   }
