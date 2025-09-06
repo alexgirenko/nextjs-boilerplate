@@ -9,42 +9,82 @@ async function getBrowser() {
   const isVercel = !!process.env.VERCEL_ENV;
   
   if (isVercel) {
-    console.log("Running on Vercel, using chrome-aws-lambda...");
+    console.log("Running on Vercel, trying fixed chromium approach...");
     
-    // Use chrome-aws-lambda which is more reliable for serverless
-    const chromium = await import("chrome-aws-lambda");
+    // Try the regular chromium with a different approach
+    const chromium = (await import("@sparticuz/chromium")).default;
+    
+    // Set environment variables for better chromium handling
+    process.env.FONTCONFIG_PATH = "/tmp";
+    process.env.HOME = "/tmp";
+    
+    // Use a custom executable path that might work better
+    const customArgs = [
+      "--no-sandbox",
+      "--disable-setuid-sandbox", 
+      "--disable-dev-shm-usage",
+      "--disable-accelerated-2d-canvas",
+      "--no-first-run",
+      "--no-zygote",
+      "--disable-gpu",
+      "--disable-web-security",
+      "--disable-features=VizDisplayCompositor",
+      "--disable-background-timer-throttling",
+      "--disable-backgrounding-occluded-windows",
+      "--disable-renderer-backgrounding",
+      "--disable-extension",
+      "--disable-ipc-flooding-protection",
+      "--single-process",
+      "--disable-crash-reporter",
+      "--disable-component-extensions-with-background-pages",
+      "--disable-default-apps",
+      "--mute-audio",
+      "--no-default-browser-check",
+      "--no-pings",
+      "--disable-hang-monitor",
+      "--disable-prompt-on-repost",
+      "--disable-sync",
+      "--user-data-dir=/tmp/chrome-user-data",
+      "--data-path=/tmp/chrome-data",
+      "--disk-cache-dir=/tmp/chrome-cache",
+      "--remote-debugging-port=9222",
+      "--remote-debugging-address=0.0.0.0"
+    ];
+    
+    // Try to use chromium's executable path, but with error handling
+    let executablePath: string;
+    try {
+      executablePath = await chromium.executablePath();
+      console.log("✅ Using chromium.executablePath():", executablePath);
+    } catch (error) {
+      // Fallback: try to find chromium in common locations
+      console.log("❌ chromium.executablePath() failed, trying fallback...");
+      const possiblePaths = [
+        "/usr/bin/chromium-browser",
+        "/usr/bin/chromium",
+        "/usr/bin/google-chrome",
+        "/opt/google/chrome/chrome",
+        "/snap/bin/chromium"
+      ];
+      
+      const fs = await import('fs');
+      executablePath = possiblePaths.find(path => {
+        try {
+          return fs.existsSync(path);
+        } catch {
+          return false;
+        }
+      }) || "/usr/bin/chromium-browser"; // Default fallback
+      
+      console.log("Using fallback executable path:", executablePath);
+    }
     
     return await puppeteerCore.launch({
-      args: [
-        ...chromium.default.args,
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-accelerated-2d-canvas",
-        "--no-first-run",
-        "--no-zygote",
-        "--disable-gpu",
-        "--disable-web-security",
-        "--disable-features=VizDisplayCompositor",
-        "--disable-background-timer-throttling",
-        "--disable-backgrounding-occluded-windows",
-        "--disable-renderer-backgrounding",
-        "--disable-extension",
-        "--disable-ipc-flooding-protection",
-        "--single-process",
-        "--disable-crash-reporter",
-        "--disable-component-extensions-with-background-pages",
-        "--disable-default-apps",
-        "--mute-audio",
-        "--no-default-browser-check",
-        "--no-pings",
-        "--disable-hang-monitor",
-        "--disable-prompt-on-repost",
-        "--disable-sync",
-      ],
-      defaultViewport: chromium.default.defaultViewport,
-      executablePath: await chromium.default.executablePath,
-      headless: chromium.default.headless,
+      headless: true,
+      args: customArgs,
+      executablePath: executablePath,
+      ignoreDefaultArgs: ["--disable-extensions"],
+      timeout: 30000
     });
   } else {
     console.log("Running locally, using full puppeteer...");
