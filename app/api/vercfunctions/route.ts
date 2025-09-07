@@ -16,12 +16,41 @@ async function getBrowser() {
 
       console.log("Connecting to Browserless.io browser...");
       
-      const browser = await puppeteerCore.connect({
-        browserWSEndpoint: `wss://chrome.browserless.io?token=2T0XB4g7fh9qxrLbb45ebf74f3d269360ff2ff362816c308c`,
-      });
-
-      console.log("✅ Successfully connected to Browserless.io browser");
-      return browser;
+      // Try both authentication methods
+      const token = process.env.BROWSERLESS_TOKEN || "2T0XB4g7fh9qxrLbb45ebf74f3d269360ff2ff362816c308c";
+      
+      if (!token) {
+        throw new Error("BROWSERLESS_TOKEN environment variable is required");
+      }
+      
+      // Method 1: Query parameter (current)
+      const wsEndpoint1 = `wss://chrome.browserless.io?token=${token}`;
+      
+      // Method 2: Header-based auth
+      const wsEndpoint2 = `wss://chrome.browserless.io`;
+      
+      console.log("Attempting connection with query parameter...");
+      try {
+        const browser = await puppeteerCore.connect({
+          browserWSEndpoint: wsEndpoint1,
+        });
+        console.log("✅ Successfully connected to Browserless.io browser");
+        return browser;
+      } catch (error1: any) {
+        console.log("Query parameter auth failed, trying header auth...");
+        try {
+          const browser = await puppeteerCore.connect({
+            browserWSEndpoint: wsEndpoint2,
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          console.log("✅ Successfully connected to Browserless.io browser with header auth");
+          return browser;
+        } catch (error2: any) {
+          throw new Error(`Both auth methods failed. Query: ${error1.message}, Header: ${error2.message}`);
+        }
+      }
       
     } catch (error: any) {
       throw new Error(`BROWSERLESS_CONNECTION_FAILED: ${error.message}`);
