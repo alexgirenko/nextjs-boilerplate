@@ -6,8 +6,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 70; // seconds
 
 async function getBrowser() {
-  const isVercel = !!process.env.VERCEL_ENV;
-
+  // const isVercel = !!process.env.VERCEL_ENV;
+  const isVercel = true; // for debugging
   if (isVercel) {
     console.log("Running on Vercel, using Browserless.io...");
     
@@ -35,6 +35,22 @@ async function getBrowser() {
           browserWSEndpoint: wsEndpoint1,
         });
         console.log("✅ Successfully connected to Browserless.io browser");
+        
+        // Configure browser for better compatibility
+        const pages = await browser.pages();
+        if (pages.length > 0) {
+          const defaultPage = pages[0];
+          // Set viewport to match typical desktop resolution
+          await defaultPage.setViewport({ 
+            width: 1920, 
+            height: 1080, 
+            deviceScaleFactor: 1 
+          });
+          
+          // Set user agent to match standard Chrome
+          await defaultPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        }
+        
         return browser;
       } catch (error1: any) {
         console.log("Query parameter auth failed, trying header auth...");
@@ -87,6 +103,98 @@ const SITE_URL = "https://app.incomeconductor.com";
 const wait = (msec: number) => new Promise((resolve) => setTimeout(resolve, msec));
 
 /**
+ * Enhanced element finder with retries and debugging
+ * @param {Object} page - Puppeteer page object
+ * @param {Array} selectors - Array of selectors to try
+ * @param {string} elementName - Name for logging
+ * @param {number} maxRetries - Maximum retry attempts
+ * @returns {Object|null} Found element or null
+ */
+async function findElementWithRetry(page: any, selectors: string[], elementName: string, maxRetries: number = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    console.log(`🔍 Attempt ${attempt}/${maxRetries} - Looking for ${elementName}...`);
+    
+    // Take a screenshot for debugging on first attempt
+    if (attempt === 1) {
+      try {
+        await page.screenshot({ path: `/tmp/${elementName}_attempt_${attempt}.png`, fullPage: false });
+        console.log(`📸 Screenshot saved for ${elementName} debugging`);
+      } catch (e: any) {
+        console.log(`Screenshot failed: ${e.message}`);
+      }
+    }
+    
+    // Wait for page to be fully loaded
+    await page.waitForLoadState?.('domcontentloaded', { timeout: 5000 }).catch(() => {});
+    await wait(1000); // Additional wait for dynamic content
+    
+    for (const selector of selectors) {
+      try {
+        console.log(`  🎯 Trying selector: ${selector}`);
+        
+        // Try multiple wait strategies
+        let element = null;
+        
+        // Strategy 1: Wait for selector with longer timeout
+        try {
+          element = await page.waitForSelector(selector, { timeout: 2000, visible: true });
+          if (element) {
+            console.log(`  ✅ Found ${elementName} with selector: ${selector}`);
+            return element;
+          }
+        } catch (e) {
+          console.log(`  ⏰ Timeout waiting for ${selector}`);
+        }
+        
+        // Strategy 2: Check if element exists in DOM (maybe not visible)
+        element = await page.$(selector);
+        if (element) {
+          console.log(`  ✅ Found ${elementName} in DOM with selector: ${selector}`);
+          // Try to scroll into view and make visible
+          await element.scrollIntoView().catch(() => {});
+          await wait(500);
+          return element;
+        }
+        
+        console.log(`  ❌ Element not found with: ${selector}`);
+      } catch (e: any) {
+        console.log(`  ⚠️ Error with selector ${selector}: ${e.message}`);
+      }
+    }
+    
+    if (attempt < maxRetries) {
+      console.log(`  🔄 Retrying in 2 seconds...`);
+      await wait(2000);
+    }
+  }
+  
+  // Final debug: dump page info
+  try {
+    const url = page.url();
+    const title = await page.title();
+    console.log(`❌ Failed to find ${elementName} after ${maxRetries} attempts`);
+    console.log(`📄 Page URL: ${url}`);
+    console.log(`📋 Page Title: ${title}`);
+    
+    // Log available input elements for debugging
+    const inputs = await page.$$eval('input', (inputs: any[]) => 
+      inputs.map(input => ({
+        type: input.type,
+        name: input.name,
+        id: input.id,
+        placeholder: input.placeholder,
+        className: input.className
+      }))
+    );
+    console.log(`🔍 Available input elements:`, JSON.stringify(inputs, null, 2));
+  } catch (e: any) {
+    console.log(`Debug info failed: ${e.message}`);
+  }
+  
+  return null;
+}
+
+/**
  * Main automation function that handles the complete Income Conductor workflow
  * @param {Object} formData - Form data from the frontend
  * @returns {Object} Automation result with extracted data
@@ -109,8 +217,11 @@ async function runAutomation(formData: any) {
     console.log("Opening new page...");
     const page = await browser.newPage();
 
-    // Set viewport
-    await page.setViewport({ width: 1366, height: 768 });
+    // Set viewport to match Browserless.io configuration
+    await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
+    
+    // Set user agent to match standard Chrome
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
     // Navigate to the Income Conductor app
     console.log("Navigating to Income Conductor...");
@@ -120,94 +231,85 @@ async function runAutomation(formData: any) {
     });
 
     console.log("Page loaded successfully!");
+     let source = await page.content({"waitUntil": "domcontentloaded"});
+
+    console.log(source);
 
     // Wait for page to fully load
-    await wait(300);
+    await wait(3000);
 
     // ========================================
     // AUTHENTICATION PROCESS
     // ========================================
 
     try {
-      // Look for common login field selectors
+      // Look for common login field selectors with enhanced detection
       const loginSelectors = [
         'input[type="email"]',
         'input[name="email"]',
         'input[name="username"]',
         'input[placeholder*="email" i]',
         'input[placeholder*="username" i]',
+        'input[id*="email" i]',
+        'input[id*="username" i]',
         "#email",
         "#username",
+        "#user",
+        '.email-input',
+        '.username-input',
+        '[data-testid*="email"]',
+        '[data-testid*="username"]'
       ];
 
-      let emailInput = null;
-      for (const selector of loginSelectors) {
-        try {
-          emailInput = await page.waitForSelector(selector, { timeout: 300 });
-          if (emailInput) {
-            console.log(`Found email input with selector: ${selector}`);
-            break;
-          }
-        } catch (e) {
-          // Continue to next selector
-        }
-      }
+      // Use enhanced element finder
+      const emailInput = await findElementWithRetry(page, loginSelectors, "email input", 3);
 
       if (emailInput) {
         console.log("Login form detected, proceeding with login...");
 
-        // Clear and type email
+        // Clear and type email with enhanced interaction
         await emailInput.click({ clickCount: 3 });
-        await emailInput.type(formData.username);
+        await wait(500); // Wait for field to be selected
+        await emailInput.type(formData.username, { delay: 100 }); // Add typing delay
         console.log("Email entered");
+        await wait(1000); // Wait for any validation/reactions
 
-        // Find password field
+        // Find password field with enhanced detection
         const passwordSelectors = [
           'input[type="password"]',
           'input[name="password"]',
+          'input[id*="password" i]',
           "#password",
+          "#pwd",
+          ".password-input",
+          '[data-testid*="password"]'
         ];
 
-        let passwordInput = null;
-        for (const selector of passwordSelectors) {
-          try {
-            passwordInput = await page.$(selector);
-            if (passwordInput) {
-              console.log(`Found password input with selector: ${selector}`);
-              break;
-            }
-          } catch (e) {
-            // Continue to next selector
-          }
-        }
+        const passwordInput = await findElementWithRetry(page, passwordSelectors, "password input", 3);
 
         if (passwordInput) {
           await passwordInput.click({ clickCount: 3 });
-          await passwordInput.type(formData.password);
+          await wait(500); // Wait for field to be selected
+          await passwordInput.type(formData.password, { delay: 100 }); // Add typing delay
           console.log("Password entered");
+          await wait(1000); // Wait for any validation/reactions
 
-          // Find and click login button
+          // Find and click login button with enhanced detection
           const loginButtonSelectors = [
             'button[type="submit"]',
             'input[type="submit"]',
             'button:contains("Login")',
             'button:contains("Sign In")',
+            'button:contains("Log In")',
             ".login-button",
             "#login-button",
+            '#login',
+            '.btn-login',
+            '[data-testid*="login"]',
+            '[data-testid*="signin"]'
           ];
 
-          let loginButton = null;
-          for (const selector of loginButtonSelectors) {
-            try {
-              loginButton = await page.$(selector);
-              if (loginButton) {
-                console.log(`Found login button with selector: ${selector}`);
-                break;
-              }
-            } catch (e) {
-              // Continue to next selector
-            }
-          }
+          const loginButton = await findElementWithRetry(page, loginButtonSelectors, "login button", 3);
 
           if (loginButton) {
             console.log("Clicking login button...");
