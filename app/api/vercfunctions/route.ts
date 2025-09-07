@@ -24,10 +24,10 @@ async function getBrowser() {
       }
       
       // Method 1: Query parameter (current)
-      const wsEndpoint1 = `wss://chrome.browserless.io?token=${token}`;
+      const wsEndpoint1 = `wss://production-sfo.browserless.io?token=${token}`;
       
       // Method 2: Header-based auth
-      const wsEndpoint2 = `wss://chrome.browserless.io`;
+      const wsEndpoint2 = `wss://production-sfo.browserless.io`;
       
       console.log("Attempting connection with query parameter...");
       try {
