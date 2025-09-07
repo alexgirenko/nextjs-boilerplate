@@ -9,61 +9,22 @@ async function getBrowser() {
   const isVercel = !!process.env.VERCEL_ENV;
 
   if (isVercel) {
-    console.log("Running on Vercel, using @sparticuz/chromium-min...");
+    console.log("Running on Vercel, using Browserless.io...");
     
     try {
-      const chromium = (await import("@sparticuz/chromium-min")).default;
       const puppeteerCore = await import("puppeteer-core");
 
-      // Set environment variables for chromium
-      process.env.FONTCONFIG_PATH = "/tmp";
-      process.env.HOME = "/tmp";
-
-      console.log("Launching @sparticuz/chromium-min browser...");
+      console.log("Connecting to Browserless.io browser...");
       
-      // Get executable path with better error handling
-      let executablePath: string;
-      try {
-        executablePath = await chromium.executablePath();
-        console.log("✅ Found chromium executable at:", executablePath);
-        
-        // Verify the file exists
-        const fs = await import("fs");
-        if (!fs.existsSync(executablePath)) {
-          throw new Error(`Executable path does not exist: ${executablePath}`);
-        }
-        
-      } catch (pathError: any) {
-        console.log("❌ Failed to get executable path:", pathError.message);
-        throw new Error(`CHROMIUM_PATH_ERROR: ${pathError.message}`);
-      }
-      
-      const browser = await puppeteerCore.launch({
-        args: [
-          ...chromium.args,
-          "--hide-scrollbars",
-          "--disable-web-security",
-          "--disable-features=VizDisplayCompositor",
-          "--disable-dev-shm-usage",
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-extensions",
-          "--no-first-run",
-          "--no-zygote",
-          "--single-process",
-          "--disable-default-apps",
-        ],
-        executablePath: executablePath,
-        headless: true,
-        defaultViewport: { width: 1366, height: 768 },
-        timeout: 30000,
+      const browser = await puppeteerCore.connect({
+        browserWSEndpoint: `wss://chrome.browserless.io?token=2T0XB4g7fh9qxrLbb45ebf74f3d269360ff2ff362816c308c`,
       });
 
-      console.log("✅ Successfully launched @sparticuz/chromium-min browser");
+      console.log("✅ Successfully connected to Browserless.io browser");
       return browser;
       
     } catch (error: any) {
-      throw new Error(`SPARTICUZ_CHROMIUM_MIN_FAILED: ${error.message}`);
+      throw new Error(`BROWSERLESS_CONNECTION_FAILED: ${error.message}`);
     }
   } else {
     console.log("Running locally, using full puppeteer...");
